@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-website:
+    defaults:
+      run:
+        working-directory: ./website
+    name: Build website
+    # The deploy-website job already builds and deploys the website to GitHub pages on pushes to master,
+    # no need to do it twice.
+    if: ${{ github.event_name != 'push' || github.ref != 'refs/heads/master' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node v20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+          cache-dependency-path: website/yarn.lock
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build website
+        run: yarn build
+
+  run-prettier:
+    name: Run Prettier on code
+    # Don't run Prettier for pull requests, only on pushes.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Prettier on code
+        uses: creyD/prettier_action@v3.3
+        with:
+          prettier_options: --write **/*.{md,json,js,css,yaml,yml}
+          commit_message: 'style(*): run prettier on codebase'
+
+  check-syntax:
+    name: Check template syntax
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check template syntax
+        uses: jo3-l/action-check-yag-tmpl-syntax@v2.3.0
+        with:
+          include: '**/*.go.tmpl'
+
+  deploy-website:
+    name: Build and deploy website to GitHub Pages
+    # Only run on pushes to master.
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+    needs: [run-prettier]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./website
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node v20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+          cache-dependency-path: website/yarn.lock
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build website
+        run: yarn build
+
+      - name: Deploy website to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+          external_repository: yagpdb-cc/yagpdb-cc.github.io
+          publish_dir: ./website/build
+          full_commit_message: 'docs: deploy website for ${{ github.repository }}@${{ github.sha }}'

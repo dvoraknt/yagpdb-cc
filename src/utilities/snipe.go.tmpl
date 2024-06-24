@@ -1,0 +1,60 @@
+{{/* 
+	Retrieves the most recent deleted message in the past hour (non-premium) / 12 hours (premium).
+	See <https://yagpdb-cc.github.io/utilities/snipe-message> for more information.
+
+	Author: zen | ゼン#0008 <https://github.com/z3nn13/>
+*/}}
+
+{{ $re := `\n\n\x60(\d{1,2} \w{5,7}) ago \(.{24}\)\x60 \*\*[\w.#]+\*\* \(ID (\d{17,19})\)\: ` }}
+{{ $undelete := execAdmin "ud -a" }}
+{{ $data := reFindAllSubmatches $re $undelete 1 }}
+{{ if not $data }}
+	Nothing to snipe here
+	{{ return }}
+{{ end }}
+
+{{ $ex := or (and (hasPrefix "a_" .Guild.Icon) "gif") "png" }}
+{{ $icon := printf "https://cdn.discordapp.com/icons/%d/%s.%s?size=1024" .Guild.ID .Guild.Icon $ex }}
+
+{{ $col := 0 }}
+{{ $pos := 0 }}
+{{ range $.Guild.Roles }}
+	{{- if not (and (in $.Member.Roles .ID) .Color (lt $pos .Position) ) }} {{- continue }} {{- end }}
+	{{- $pos = .Position }} {{- $col = .Color -}}
+{{ end }}
+
+{{ $dur := toDuration (index $data 0 1) }}
+{{ $member := getMember (index $data 0 2) }}
+{{ $msg := index (reSplit $re $undelete 3) 1 }}
+{{ $embed := sdict
+	"author" (sdict
+		"name" (printf "%s (ID %d)" $member.User.String $member.User.ID)
+		"icon_url" ($member.User.AvatarURL "256")
+	)
+	"description" $msg 
+	"footer" (sdict
+		"text" (print "Message from " (index $data 0 1) " ago")
+		"icon_url" $icon
+	)
+	"timestamp" (mult $dur -1 | toDuration | currentTime.Add)
+	"color" $col 
+}}
+{{ $send := sdict "reply" .Message.ID "embed" $embed }}
+
+{{ $imgRe := `\.(?i:jpe?g|png|gif|tif|webp)`}}
+{{ if and ($imgURL := reFind .LinkRegex $msg) (reFind $imgRe $imgURL) }}
+	{{ $embed.footer.Set "text" (print "⚠️ An image link was detected\n" $embed.footer.text) }}
+	{{ $embed.Set "image" (sdict "url" $imgURL) }}
+{{ end }}
+
+{{ if not $msg }}
+	{{ $embed.footer.Set "text" (print "⚠️ An attachment/embed was deleted\n" $embed.footer.text) }}
+{{ end }}
+
+{{ if gt (len $msg) 2000 }}
+	{{ $embed.footer.Set "text" (print "⚠️ Message exceeded 2k characters. Contents sent as file instead\n" $embed.footer.text) }}
+	{{ $embed.Del "description" }}
+	{{ $send.Set "file" $msg }}
+{{ end }}
+
+{{ sendMessage nil (complexMessage $send) }}

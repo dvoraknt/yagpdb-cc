@@ -1,0 +1,52 @@
+{{/*
+	Views information about a given channel / the current channel.
+	See <https://yagpdb-cc.github.io/info/channel> for more information.
+
+	Author: jo3-l <https://github.com/jo3-l>
+*/}}
+
+{{ $channel := .Channel }}
+{{ $args := parseArgs 0 "**Syntax:** -channel [channel]" (carg "channel" "channel") }}
+{{ if $args.IsSet 0 }}
+	{{ $channel = $args.Get 0 }}
+{{ end }}
+
+{{ $types := dict 
+	0 "Text"
+	1 "DM"
+	2 "Voice"
+	3 "Group DM"
+	4 "Category"
+	5 "Announcement"
+	10 "Thread - Announcement"
+	11 "Thread - Public"
+	12 "Thread - Private"
+	13 "Stage"
+	14 "Directory"
+	15 "Forum"
+	16 "Media"
+}}
+{{/* $channel.Type is converted to json, then int as toInt unexpectedly returns 0 for .Channel.Type currently */}}
+{{ $type := $types.Get (toInt (json $channel.Type)) }}
+{{ $nsfw := "No" }}
+{{ $parent := "*None set*" }}
+{{ if $channel.NSFW }} {{ $nsfw = "Yes" }} {{ end }}
+{{ if $channel.ParentID }}
+	{{ $parent = printf "<#%d>" $channel.ParentID }}
+	{{ if (getChannel $channel.ParentID).IsForum }} {{ $type = "Thread - Forum" }} {{ end}}
+{{ end }}
+{{ $createdAt := snowflakeToTime $channel.ID }}
+{{ sendMessage nil (cembed
+	"title" (printf "❯ Info for #%s" $channel.Name)
+	"fields" (cslice
+		(sdict "name" "❯ ID" "value" (str $channel.ID) "inline" true)
+		(sdict "name" "❯ Topic" "value" (or $channel.Topic "*None set*") "inline" true)
+		(sdict "name" "❯ Parent Channel" "value" $parent "inline" true)
+		(sdict "name" "❯ NSFW" "value" $nsfw "inline" true)
+		(sdict "name" "❯ Position" "value" (str (add $channel.Position 1)) "inline" true)
+		(sdict "name" "❯ Type" "value" $type "inline" true)
+	)
+	"color" 14232643
+	"footer" (sdict "text" "Created at")
+	"timestamp" $createdAt
+) }}
